@@ -26,9 +26,13 @@ Background references:
 Under the risk-neutral measure, the Heston model is given by:
 
 
-dS_t = r S_t dt + sqrt(v_t) S_t dW_t^S
+Under the risk-neutral measure, the Heston model is given by:
 
-dv_t = kappa (theta − v_t) dt + sigma_v sqrt(v_t) dW_t^v
+![SDE1](https://latex.codecogs.com/svg.image?dS_t%20=%20rS_t\,dt%20+%20\sqrt{v_t}S_t\,dW_t^S)
+
+![SDE2](https://latex.codecogs.com/svg.image?dv_t%20=%20\kappa(\theta-v_t)\,dt%20+%20\sigma_v\sqrt{v_t}\,dW_t^v)
+
+with correlation rho between the Brownian motions.
 
 with correlation \( \rho \) between the Brownian motions.
 
