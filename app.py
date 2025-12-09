@@ -10,6 +10,81 @@ from heston_core.plots import (
     strike_sweep_figure,
 )
 
+from heston_core.params import HestonParams
+from heston_core.presets import PRESETS, sample_random_heston_params
+
+
+def sidebar_heston_params() -> HestonParams:
+    st.sidebar.header("Heston Parameters")
+
+    # ---- Preset selection ----
+    preset_keys = list(PRESETS.keys())
+    preset_labels = [PRESETS[k]["label"] for k in preset_keys]
+    preset_labels.append("Random (bounded)")
+
+    preset_index = st.sidebar.selectbox(
+        "Preset",
+        options=list(range(len(preset_labels))),
+        format_func=lambda i: preset_labels[i],
+    )
+
+    if preset_index == len(preset_labels) - 1:
+        # Random
+        base_params = sample_random_heston_params()
+        st.sidebar.caption(
+            "Random parameter set sampled within reasonable bounds for stress testing."
+        )
+    else:
+        key = preset_keys[preset_index]
+        base_params = PRESETS[key]["params"]
+        st.sidebar.caption(PRESETS[key]["description"])
+
+    # ---- Sliders / number inputs using the preset as defaults ----
+    v0 = st.sidebar.number_input(
+        "Initial variance v₀",
+        value=float(base_params.v0),
+        min_value=0.0001,
+    )
+    kappa = st.sidebar.number_input(
+        "Mean reversion κ",
+        value=float(base_params.kappa),
+        min_value=0.0001,
+    )
+    theta = st.sidebar.number_input(
+        "Long-run variance θ",
+        value=float(base_params.theta),
+        min_value=0.0001,
+    )
+    sigma_v = st.sidebar.number_input(
+        "Vol of variance σᵥ",
+        value=float(base_params.sigma_v),
+        min_value=0.0001,
+    )
+    rho = st.sidebar.slider(
+        "Correlation ρ",
+        min_value=-0.99,
+        max_value=0.99,
+        value=float(base_params.rho),
+    )
+    r = st.sidebar.number_input(
+        "Risk-free rate r",
+        value=float(base_params.r),
+        min_value=-0.05,
+        max_value=0.25,
+        format="%.4f",
+    )
+
+    # (q is unused for now; keep 0.0)
+    return HestonParams(
+        kappa=kappa,
+        theta=theta,
+        sigma_v=sigma_v,
+        rho=rho,
+        v0=v0,
+        r=r,
+        q=0.0,
+    )
+
 
 def main():
     st.set_page_config(
@@ -24,30 +99,31 @@ def main():
     and prices a **European option by [Monte Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_methods_in_finance)**.
     """
     )
-    # ----- Sidebar inputs -----
+
+    # ----- Sidebar: option & market params -----
     st.sidebar.header("Option & Market Parameters")
     S0 = st.sidebar.number_input("Spot price S₀", value=100.0, min_value=0.01)
     K = st.sidebar.number_input("Strike K", value=100.0, min_value=0.01)
     T = st.sidebar.number_input("Maturity T (years)", value=1.0, min_value=0.01)
-    r = st.sidebar.number_input("Risk-free rate r", value=0.02, format="%.4f")
 
-    st.sidebar.header("Heston Parameters")
-    v0 = st.sidebar.number_input("Initial variance v₀", value=0.04, min_value=0.0001)
-    kappa = st.sidebar.number_input("Mean reversion κ", value=2.0, min_value=0.0001)
-    theta = st.sidebar.number_input(
-        "Long-run variance θ", value=0.04, min_value=0.0001
-    )
-    sigma_v = st.sidebar.number_input(
-        "Vol of variance σᵥ", value=0.5, min_value=0.0001
-    )
-    rho = st.sidebar.slider("Correlation ρ", min_value=-0.99, max_value=0.99, value=-0.7)
+    # ----- Sidebar: Heston params (with presets) -----
+    params = sidebar_heston_params()
 
+    # ----- Sidebar: Monte Carlo settings -----
     st.sidebar.header("Monte Carlo Settings")
     n_paths = st.sidebar.number_input(
-        "Number of paths", value=20_000, min_value=1_000, max_value=200_000, step=1_000
+        "Number of paths",
+        value=20_000,
+        min_value=1_000,
+        max_value=200_000,
+        step=1_000,
     )
     n_steps = st.sidebar.number_input(
-        "Time steps", value=200, min_value=10, max_value=1_000, step=10
+        "Time steps",
+        value=200,
+        min_value=10,
+        max_value=1_000,
+        step=10,
     )
     seed = st.sidebar.number_input(
         "Random seed (0 = none)", value=42, min_value=0, max_value=1_000_000
@@ -67,12 +143,12 @@ def main():
     with st.spinner("Simulating Heston paths..."):
         S, v = simulate_heston_paths(
             S0=S0,
-            v0=v0,
-            r=r,
-            kappa=kappa,
-            theta=theta,
-            sigma_v=sigma_v,
-            rho=rho,
+            v0=params.v0,
+            r=params.r,
+            kappa=params.kappa,
+            theta=params.theta,
+            sigma_v=params.sigma_v,
+            rho=params.rho,
             T=T,
             n_paths=int(n_paths),
             n_steps=int(n_steps),
@@ -82,7 +158,7 @@ def main():
     S_T = S[-1, :]
 
     price, se = european_option_price_mc(
-        S_T=S_T, K=K, r=r, T=T, option_type=option_type.lower()
+        S_T=S_T, K=K, r=params.r, T=T, option_type=option_type.lower()
     )
 
     # ----- Top summary metrics -----
@@ -144,7 +220,7 @@ def main():
         else:
             strikes = np.linspace(K * strike_low, K * strike_high, n_strikes)
             prices_strikes = price_for_strikes(
-                S_T, strikes, r, T, option_type=option_type.lower()
+                S_T, strikes, params.r, T, option_type=option_type.lower()
             )
             fig4 = strike_sweep_figure(strikes, prices_strikes, option_type=option_type)
             st.pyplot(fig4)
