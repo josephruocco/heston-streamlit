@@ -1,95 +1,30 @@
 import numpy as np
 import streamlit as st
-import matplotlib.pyplot as plt
 
-
-def simulate_heston_paths(
-    S0: float,
-    v0: float,
-    r: float,
-    kappa: float,
-    theta: float,
-    sigma_v: float,
-    rho: float,
-    T: float,
-    n_paths: int = 20_000,
-    n_steps: int = 200,
-    seed: int = None,
-):
-    """
-    Simulate Heston paths using Euler discretization.
-
-    dS_t = r S_t dt + sqrt(v_t) S_t dW1_t
-    dv_t = kappa (theta - v_t) dt + sigma_v sqrt(v_t) dW2_t
-    corr(dW1, dW2) = rho
-    """
-    if seed is not None:
-        np.random.seed(seed)
-
-    dt = T / n_steps
-    S = np.zeros((n_steps + 1, n_paths))
-    v = np.zeros((n_steps + 1, n_paths))
-
-    S[0, :] = S0
-    v[0, :] = v0
-
-    for t in range(1, n_steps + 1):
-        # Two independent standard normals
-        z1 = np.random.randn(n_paths)
-        z2 = np.random.randn(n_paths)
-
-        # Correlated Brownian motions
-        dW1 = np.sqrt(dt) * z1
-        dW2 = np.sqrt(dt) * (rho * z1 + np.sqrt(1 - rho**2) * z2)
-
-        # Previous step
-        v_prev = np.maximum(v[t - 1, :], 0.0)
-
-        # Variance process
-        v[t, :] = (
-            v_prev
-            + kappa * (theta - v_prev) * dt
-            + sigma_v * np.sqrt(v_prev) * dW2
-        )
-        v[t, :] = np.maximum(v[t, :], 0.0)  # enforce non-negativity
-
-        # Asset process
-        S_prev = S[t - 1, :]
-        S[t, :] = S_prev * np.exp(
-            (r - 0.5 * v_prev) * dt + np.sqrt(v_prev) * dW1
-        )
-
-    return S, v
-
-
-def european_option_price_mc(S_T, K, r, T, option_type="call"):
-    if option_type.lower() == "call":
-        payoff = np.maximum(S_T - K, 0.0)
-    else:
-        payoff = np.maximum(K - S_T, 0.0)
-
-    disc_factor = np.exp(-r * T)
-    price = disc_factor * payoff.mean()
-    std_error = disc_factor * payoff.std(ddof=1) / np.sqrt(len(payoff))
-    return price, std_error
+from heston_core.mc import simulate_heston_paths
+from heston_core.pricing import european_option_price_mc, price_for_strikes
+from heston_core.plots import (
+    price_paths_figure,
+    variance_paths_figure,
+    terminal_hist_figure,
+    strike_sweep_figure,
+)
 
 
 def main():
-    st.title("Heston Model – European Option Pricer (Monte Carlo)")
-
-    st.markdown(
-        """
-This app simulates the **Heston stochastic volatility model** and prices a
-European call/put by **Monte Carlo**.
-
-Model under risk-neutral measure:
-
-- dSₜ = r Sₜ dt + √(vₜ) Sₜ dW₁ₜ  
-- dvₜ = κ(θ − vₜ) dt + σᵥ √(vₜ) dW₂ₜ  
-- corr(dW₁, dW₂) = ρ
-"""
+    st.set_page_config(
+        page_title="Heston Model Monte Carlo",
+        layout="wide",
     )
 
+    st.title("Heston Model – European Option Pricer (Monte Carlo)")
+    st.markdown(
+        """
+    This app simulates the **[Heston stochastic volatility model](https://en.wikipedia.org/wiki/Heston_model)**
+    and prices a **European option by [Monte Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_methods_in_finance)**.
+    """
+    )
+    # ----- Sidebar inputs -----
     st.sidebar.header("Option & Market Parameters")
     S0 = st.sidebar.number_input("Spot price S₀", value=100.0, min_value=0.01)
     K = st.sidebar.number_input("Strike K", value=100.0, min_value=0.01)
@@ -99,18 +34,20 @@ Model under risk-neutral measure:
     st.sidebar.header("Heston Parameters")
     v0 = st.sidebar.number_input("Initial variance v₀", value=0.04, min_value=0.0001)
     kappa = st.sidebar.number_input("Mean reversion κ", value=2.0, min_value=0.0001)
-    theta = st.sidebar.number_input("Long-run variance θ", value=0.04, min_value=0.0001)
+    theta = st.sidebar.number_input(
+        "Long-run variance θ", value=0.04, min_value=0.0001
+    )
     sigma_v = st.sidebar.number_input(
         "Vol of variance σᵥ", value=0.5, min_value=0.0001
     )
     rho = st.sidebar.slider("Correlation ρ", min_value=-0.99, max_value=0.99, value=-0.7)
 
-    st.sidebar.header("MC Settings")
+    st.sidebar.header("Monte Carlo Settings")
     n_paths = st.sidebar.number_input(
-        "Number of paths", value=20_000, min_value=1000, max_value=200_000, step=1000
+        "Number of paths", value=20_000, min_value=1_000, max_value=200_000, step=1_000
     )
     n_steps = st.sidebar.number_input(
-        "Time steps", value=200, min_value=10, max_value=1000, step=10
+        "Time steps", value=200, min_value=10, max_value=1_000, step=10
     )
     seed = st.sidebar.number_input(
         "Random seed (0 = none)", value=42, min_value=0, max_value=1_000_000
@@ -120,53 +57,97 @@ Model under risk-neutral measure:
 
     option_type = st.radio("Option type", ["Call", "Put"], horizontal=True)
 
-    if st.button("Run Simulation & Price Option"):
-        with st.spinner("Simulating Heston paths..."):
-            S, v = simulate_heston_paths(
-                S0=S0,
-                v0=v0,
-                r=r,
-                kappa=kappa,
-                theta=theta,
-                sigma_v=sigma_v,
-                rho=rho,
-                T=T,
-                n_paths=int(n_paths),
-                n_steps=int(n_steps),
-                seed=seed,
-            )
+    run = st.button("Run Simulation & Price Option")
 
-        S_T = S[-1, :]
-        price, se = european_option_price_mc(
-            S_T=S_T, K=K, r=r, T=T, option_type=option_type.lower()
+    if not run:
+        st.info("Set parameters in the sidebar and click **Run Simulation & Price Option**.")
+        return
+
+    # ----- Simulation -----
+    with st.spinner("Simulating Heston paths..."):
+        S, v = simulate_heston_paths(
+            S0=S0,
+            v0=v0,
+            r=r,
+            kappa=kappa,
+            theta=theta,
+            sigma_v=sigma_v,
+            rho=rho,
+            T=T,
+            n_paths=int(n_paths),
+            n_steps=int(n_steps),
+            seed=seed,
         )
 
-        st.subheader("Option Price")
-        st.write(
-            f"**{option_type} price:** {price:.4f} (standard error ≈ {se:.4f})"
-        )
+    S_T = S[-1, :]
 
-        # Plot a few sample paths
-        st.subheader("Sample Price & Variance Paths")
-        n_show = min(10, S.shape[1])
+    price, se = european_option_price_mc(
+        S_T=S_T, K=K, r=r, T=T, option_type=option_type.lower()
+    )
 
-        fig, ax = plt.subplots()
-        ax.plot(np.linspace(0, T, S.shape[0]), S[:, :n_show])
-        ax.set_xlabel("Time")
-        ax.set_ylabel("S(t)")
-        ax.set_title("Sample underlying paths")
+    # ----- Top summary metrics -----
+    col1, col2, col3 = st.columns(3)
+    col1.metric(label=f"{option_type} price", value=f"{price:.4f}")
+    col2.metric(label="Std. error (MC)", value=f"{se:.4f}")
+    col3.metric(label="Mean terminal price E[S_T]", value=f"{S_T.mean():.4f}")
+
+    st.caption(
+        "Monte Carlo estimates converge as you increase the number of paths / steps, at the cost of runtime."
+    )
+
+    # ----- Tabs for visuals -----
+    tab_paths, tab_var, tab_dist, tab_smile = st.tabs(
+        ["Paths", "Variance", "Terminal distribution", "Strike sweep"]
+    )
+
+    with tab_paths:
+        st.subheader("Sample underlying paths")
+        fig = price_paths_figure(S, T, n_show=20)
         st.pyplot(fig)
 
-        fig2, ax2 = plt.subplots()
-        ax2.plot(np.linspace(0, T, v.shape[0]), v[:, :n_show])
-        ax2.set_xlabel("Time")
-        ax2.set_ylabel("v(t)")
-        ax2.set_title("Sample variance paths")
+    with tab_var:
+        st.subheader("Sample variance paths")
+        fig2 = variance_paths_figure(v, T, n_show=20)
         st.pyplot(fig2)
 
-        st.caption(
-            "Monte Carlo estimates converge as you increase the number of paths / steps, at the cost of runtime."
+    with tab_dist:
+        st.subheader("Distribution of terminal prices S(T)")
+        fig3 = terminal_hist_figure(S_T)
+        st.pyplot(fig3)
+        st.write(
+            f"Mean S(T): **{S_T.mean():.4f}**, "
+            f"Std S(T): **{S_T.std(ddof=1):.4f}**"
         )
+
+    with tab_smile:
+        st.subheader("Price vs. strike (same simulation)")
+        strike_low = st.number_input(
+            "Strike min (as multiple of K)",
+            value=0.5,
+            min_value=0.1,
+            max_value=2.0,
+            step=0.1,
+        )
+        strike_high = st.number_input(
+            "Strike max (as multiple of K)",
+            value=1.5,
+            min_value=0.1,
+            max_value=3.0,
+            step=0.1,
+        )
+        n_strikes = st.slider(
+            "Number of strikes", min_value=5, max_value=30, value=15
+        )
+
+        if strike_low >= strike_high:
+            st.error("Strike min must be < Strike max.")
+        else:
+            strikes = np.linspace(K * strike_low, K * strike_high, n_strikes)
+            prices_strikes = price_for_strikes(
+                S_T, strikes, r, T, option_type=option_type.lower()
+            )
+            fig4 = strike_sweep_figure(strikes, prices_strikes, option_type=option_type)
+            st.pyplot(fig4)
 
 
 if __name__ == "__main__":
