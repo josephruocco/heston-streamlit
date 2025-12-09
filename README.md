@@ -25,13 +25,10 @@ Background references:
 
 Under the risk-neutral measure, the Heston model is given by:
 
+<img width="303" height="48" alt="Screenshot 2025-12-08 at 7 40 31 PM" src="https://github.com/user-attachments/assets/0c14f5ab-3ea2-4696-b958-5aaf6259f0a7" />
 <img width="278" height="36" alt="Screenshot 2025-12-08 at 7 36 38 PM" src="https://github.com/user-attachments/assets/feac772e-9332-4b8c-bbc2-3117cb5d7c9e" />
-<img width="1363" height="387" alt="Screenshot 2025-12-07 at 10 09 50 PM" src="https://github.com/user-attachments/assets/a6fd0934-f749-4a74-bacc-ae2e22e5bfe3" />
-
  
 with correlation rho between the Brownian motions.
-
-with correlation \( \rho \) between the Brownian motions.
 
 European option prices are estimated via discounted expected payoffs.
 
