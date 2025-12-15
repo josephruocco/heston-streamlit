@@ -163,9 +163,9 @@ def main():
 
     # ----- Top summary metrics -----
     col1, col2, col3 = st.columns(3)
-    col1.metric(label=f"{option_type} price", value=f"{price:.4f}")
-    col2.metric(label="Std. error (MC)", value=f"{se:.4f}")
-    col3.metric(label="Mean terminal price E[S_T]", value=f"{S_T.mean():.4f}")
+    col1.metric(label=f"{option_type} price", value=f"{price:.2f}")
+    col2.metric(label="Std. error (MC)", value=f"{se:.2f}")
+    col3.metric(label="Mean terminal price E[S_T]", value=f"{S_T.mean():.2f}")
 
     st.caption(
         "Monte Carlo estimates converge as you increase the number of paths / steps, at the cost of runtime."
@@ -191,8 +191,8 @@ def main():
         fig3 = terminal_hist_figure(S_T)
         st.pyplot(fig3)
         st.write(
-            f"Mean S(T): **{S_T.mean():.4f}**, "
-            f"Std S(T): **{S_T.std(ddof=1):.4f}**"
+            f"Mean S(T): **{S_T.mean():.2f}**, "
+            f"Std S(T): **{S_T.std(ddof=1):.2f}**"
         )
 
     with tab_smile:
