@@ -13,6 +13,8 @@ from heston_core.plots import (
 from heston_core.params import HestonParams
 from heston_core.presets import PRESETS, sample_random_heston_params
 
+# NEW: analytic benchmark
+from heston_core.analytic import heston_price_analytic, HestonParams as AnalyticHestonParams
 
 def sidebar_heston_params() -> HestonParams:
     st.sidebar.header("Heston Parameters")
@@ -133,6 +135,17 @@ def main():
 
     option_type = st.radio("Option type", ["Call", "Put"], horizontal=True)
 
+    # ----- Sidebar: Analytic benchmark toggle -----
+    st.sidebar.header("Analytical Benchmark")
+    show_analytic = st.sidebar.checkbox("Compute analytic Heston price", value=True)
+    integ_upper = st.sidebar.number_input(
+        "Integration upper limit (u-max)",
+        value=200.0,
+        min_value=50.0,
+        max_value=500.0,
+        step=25.0,
+    )
+
     run = st.button("Run Simulation & Price Option")
 
     if not run:
@@ -161,11 +174,50 @@ def main():
         S_T=S_T, K=K, r=params.r, T=T, option_type=option_type.lower()
     )
 
+    analytic_price = None
+    analytic_err = None
+    analytic_rel = None
+
+    if show_analytic:
+        with st.spinner("Computing analytic Heston price..."):
+            try:
+                aparams = AnalyticHestonParams(
+                    kappa=params.kappa,
+                    theta=params.theta,
+                    sigma=params.sigma_v,   # <-- map sigma_v -> sigma
+                    rho=params.rho,
+                    v0=params.v0,
+                )
+
+                analytic_price = heston_price_analytic(
+                    S0=S0,
+                    K=K,
+                    r=params.r,
+                    T=T,
+                    params=aparams,
+                    option=option_type.lower(),   # <-- option, not option_type
+                    trap=True,
+                    integ_upper=float(integ_upper),
+                )
+
+                analytic_err = price - analytic_price
+                analytic_rel = abs(analytic_err) / max(1e-12, abs(analytic_price))
+            except Exception as e:
+                st.warning(f"Analytic pricing failed: {e}")
+                analytic_price = None
+
     # ----- Top summary metrics -----
-    col1, col2, col3 = st.columns(3)
-    col1.metric(label=f"{option_type} price", value=f"{price:.2f}")
-    col2.metric(label="Std. error (MC)", value=f"{se:.2f}")
-    col3.metric(label="Mean terminal price E[S_T]", value=f"{S_T.mean():.2f}")
+    if show_analytic and analytic_price is not None:
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric(label=f"{option_type} price (MC)", value=f"{price:.4f}")
+        col2.metric(label="Std. error (MC)", value=f"{se:.4f}")
+        col3.metric(label=f"{option_type} price (Analytic)", value=f"{analytic_price:.4f}")
+        col4.metric(label="Abs / Rel error", value=f"{abs(analytic_err):.4f} / {analytic_rel:.2%}")
+    else:
+        col1, col2, col3 = st.columns(3)
+        col1.metric(label=f"{option_type} price (MC)", value=f"{price:.4f}")
+        col2.metric(label="Std. error (MC)", value=f"{se:.4f}")
+        col3.metric(label="Mean terminal price E[S_T]", value=f"{S_T.mean():.2f}")
 
     st.caption(
         "Monte Carlo estimates converge as you increase the number of paths / steps, at the cost of runtime."
